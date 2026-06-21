@@ -1,0 +1,10 @@
+{
+  "transport": "tcp",
+  "alpha_s": 0.0007900210214432442,
+  "alpha_us": 790.0210214432442,
+  "beta_s_per_byte": 3.1329715373944957e-06,
+  "beta_ns_per_byte": 3132.971537394496,
+  "r_squared": 0.9993712078670581,
+  "fit_basis": "per-size median (p50)",
+  "platform": "ECP5 + LiteEth + VexRiscv"
+}

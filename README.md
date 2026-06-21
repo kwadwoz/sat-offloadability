@@ -83,23 +83,26 @@ figures/        generated plots (RTT vs payload, latency CDF, roofline, distribu
 paper/          acmart abstract source
 ```
 
-## Reproducing the figures
+## Running it
 
 ```bash
-# 1. instrument the solver across benchmark families
-python instrument/run_stats.py --benchmarks benchmarks/ --out instrument/props.csv
+# 1. instrument the solver across benchmark families -> props.csv
+python3 instrument/run_stats.py --benchmarks benchmarks/ \
+                                --out instrument/props.csv --timeout 30
 
-# 2. measure transport parameters (requires the SoC reachable on the LAN)
-python transport/measure_rtt.py --transport udp --out transport/udp.csv
-python transport/measure_rtt.py --transport tcp --out transport/tcp.csv
-
-# 3. fit the model, classify instances, render figures
-python model/classify.py --props instrument/props.csv \
-                         --transport transport/ \
-                         --figures figures/
+# 2. classify instances and render figures
+python3 model/classify.py --props instrument/props.csv \
+                          --figures figures/ --out model/classification.csv
 ```
 
-*(Scripts land as the experiments are built out; this is the intended interface.)*
+Step 2 prints the per-family required-batching-factor table and writes the
+figures (`e4_distributions`, `e3_batching_factor`, `e3_roofline`) to `figures/`.
+
+Useful flags: `--r-cpu 1e6` sweeps the CPU propagation rate; `--timeout`
+caps per-instance solve time.
+
+Transport measurement (E1/E2, optional) reuses `host/measure.py` from the
+companion `ecp5-ethernet-soc` repo; until then `alpha`/`beta` are swept.
 
 ## Context
 

@@ -60,14 +60,15 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-# Representative transport parameters. Reported as MEASURED-style swept values,
-# not universal constants. alpha spans coupling regimes from tight on-chip /
-# PCIe-class links up to a LiteEth/VexRiscv UDP echo over Ethernet.
+# Swept coupling regimes (representative, not universal): tight on-chip / PCIe
+# class up to a real measured link. The ECP5 entry is filled in from a measured
+# params.json when --measured is passed (see load_measured), otherwise it is a
+# representative placeholder so the pipeline runs without hardware.
 ALPHA_REGIMES = {
     "on-chip (1 us)": 1e-6,
     "PCIe-class (10 us)": 1e-5,
     "tuned-link (50 us)": 5e-5,
-    "ECP5 UDP (200 us)": 2e-4,
+    "ECP5 link (~200 us)": 2e-4,
 }
 DEFAULT_R_CPU = 1.0e7   # propagations/sec; MiniSat steady-state, swept-able
 BETA = 8e-8             # s/byte (~100 Mbit/s inverse bandwidth)
@@ -75,6 +76,20 @@ BETA = 8e-8             # s/byte (~100 Mbit/s inverse bandwidth)
 
 def w_min(alpha: float, r_cpu: float) -> float:
     return alpha * r_cpu
+
+
+def load_measured(path: Path) -> None:
+    """Replace the placeholder ECP5 regime with a measured alpha from params.json.
+
+    Drops the representative 'ECP5 link (~200 us)' entry and inserts a labelled
+    measured point so figures and the table report the real hardware number.
+    """
+    import json
+    p = json.loads(Path(path).read_text())
+    alpha_us = p["alpha_us"]
+    transport = p.get("transport", "link").upper()
+    ALPHA_REGIMES.pop("ECP5 link (~200 us)", None)
+    ALPHA_REGIMES[f"ECP5 {transport} (measured {alpha_us:.0f} us)"] = alpha_us * 1e-6
 
 
 def classify(df: pd.DataFrame, r_cpu: float) -> pd.DataFrame:
@@ -132,23 +147,54 @@ def fig_batching_factor(df: pd.DataFrame, r_cpu: float, path: Path) -> None:
     plt.close(fig)
 
 
-def fig_roofline(r_cpu: float, path: Path, payload_bytes: int = 64) -> None:
-    """E3 roofline: throughput P(W) for swept R_hw, with CPU and W_min lines."""
-    fig, ax = plt.subplots(figsize=(8, 5))
-    W = np.logspace(0, 6, 400)  # work units per trip
-    alpha = ALPHA_REGIMES["tuned-link (50 us)"]
+def fig_roofline(r_cpu: float, alpha: float, alpha_label: str, path: Path,
+                 payload_bytes: int = 64) -> None:
+    """E3 roofline: end-to-end offload throughput vs work-per-trip, swept R_hw.
+
+    Shows the break-even W_min, the CPU baseline, the loss zone (W < W_min where
+    offload never wins), and the latency-bound vs hardware-bound regimes.
+    """
+    fig, ax = plt.subplots(figsize=(9, 5.5))
+    W = np.logspace(1, 6, 500)          # propagations shipped per round trip
     s = payload_bytes
-    for r_hw in [1e6, 1e7, 1e8, 1e9]:
-        P = W / (alpha + BETA * s + W / r_hw)
-        ax.loglog(W, P, label=f"R_hw = {r_hw:.0e} prop/s")
-    ax.axhline(r_cpu, color="k", ls="-", lw=1.5, label=f"R_cpu = {r_cpu:.0e}")
     wm = w_min(alpha, r_cpu)
-    ax.axvline(wm, color="r", ls="--", lw=1.2, label=f"W_min = {wm:.0f}")
-    ax.set_xlabel("work shipped per round trip W (propagations)")
-    ax.set_ylabel("end-to-end throughput P (prop/s)")
-    ax.set_title(f"E3: offload roofline (alpha = {alpha*1e6:.0f} us, s = {s} B)")
-    ax.legend(fontsize=8, loc="lower right")
-    ax.grid(True, which="both", alpha=0.3)
+
+    # hardware-speed curves, labelled relative to the CPU rate
+    speeds = [(1e6, "0.1x CPU"), (1e7, "1x CPU"), (1e8, "10x CPU"), (1e9, "100x CPU")]
+    colors = ["#9467bd", "#1f77b4", "#2ca02c", "#d62728"]
+    for (r_hw, rel), c in zip(speeds, colors):
+        P = W / (alpha + BETA * s + W / r_hw)
+        ax.loglog(W, P, color=c, lw=2,
+                  label=f"accelerator R_hw = {r_hw:.0e} prop/s  ({rel})")
+
+    ax.set_xlim(W[0], W[-1])
+    ax.set_ylim(1e3, 3e9)
+
+    # CPU baseline and break-even threshold
+    ax.axhline(r_cpu, color="k", ls="-", lw=1.6)
+    ax.text(W[-1], r_cpu * 1.3, f"CPU baseline  R_cpu = {r_cpu:.0e} prop/s",
+            fontsize=9, va="bottom", ha="right")
+    ax.axvline(wm, color="k", ls="--", lw=1.4)
+    ax.text(wm * 1.25, 4e8, f"break-even\nW_min = {wm:,.0f}",
+            fontsize=9, va="center", ha="left")
+
+    # loss zone: any offload shipping less than W_min loses to the CPU
+    ax.axvspan(W[0], wm, color="red", alpha=0.07)
+    ax.text(np.sqrt(W[0] * wm), 5e6, "LOSS ZONE\noffload never\nbeats CPU\n(any R_hw)",
+            color="#b22222", fontsize=9, ha="center", va="center")
+
+    # regime annotations
+    ax.text(4e5, 6e6, "hardware-bound\n(throughput ceiling)", fontsize=8.5,
+            ha="center", color="dimgrey")
+    ax.text(4e4, 6e3, "latency-bound\n(alpha dominates)", fontsize=8.5,
+            ha="center", color="dimgrey")
+    ax.set_xlabel("Work shipped per round trip, W  (propagations)", fontsize=11)
+    ax.set_ylabel("End-to-end offload throughput, P  (propagations / sec)", fontsize=11)
+    ax.set_title("E3 roofline: when does offloading beat the CPU?\n"
+                 f"(alpha = {alpha*1e6:.0f} us [{alpha_label}],  payload s = {s} B)",
+                 fontsize=11)
+    ax.legend(fontsize=8.5, loc="lower right", title="swept accelerator speed")
+    ax.grid(True, which="both", alpha=0.25)
     fig.tight_layout()
     fig.savefig(path, dpi=150)
     plt.close(fig)
@@ -162,7 +208,13 @@ def main() -> None:
     ap.add_argument("--figures", type=Path, default=Path("figures"))
     ap.add_argument("--r-cpu", type=float, default=DEFAULT_R_CPU,
                     help="CPU propagation rate (props/sec); swept parameter")
+    ap.add_argument("--measured", type=Path, default=None,
+                    help="transport params.json from E1; replaces the placeholder "
+                         "ECP5 regime with the measured alpha")
     args = ap.parse_args()
+
+    if args.measured:
+        load_measured(args.measured)
 
     df = pd.read_csv(args.props)
     df = df[df.status == "ok"].copy()
@@ -175,9 +227,14 @@ def main() -> None:
     classified = classify(df, args.r_cpu)
     classified.to_csv(args.out, index=False)
 
+    # roofline uses the measured ECP5 alpha when available, else the tuned-link
+    roof_label, roof_alpha = next(
+        ((lbl, a) for lbl, a in ALPHA_REGIMES.items() if "ECP5" in lbl),
+        ("tuned-link", ALPHA_REGIMES["tuned-link (50 us)"]),
+    )
     fig_distributions(df, args.r_cpu, args.figures / "e4_distributions.png")
     fig_batching_factor(df, args.r_cpu, args.figures / "e3_batching_factor.png")
-    fig_roofline(args.r_cpu, args.figures / "e3_roofline.png")
+    fig_roofline(args.r_cpu, roof_alpha, roof_label, args.figures / "e3_roofline.png")
 
     # console summary: median required batching factor per family x alpha
     print(f"instances classified: {len(df)}    R_cpu = {args.r_cpu:.2e} prop/s\n")
