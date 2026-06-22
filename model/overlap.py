@@ -42,8 +42,20 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+plt.rcParams.update({
+    "font.size": 12,
+    "axes.titlesize": 14,
+    "axes.labelsize": 12.5,
+    "legend.fontsize": 10,
+    "xtick.labelsize": 11,
+    "ytick.labelsize": 11,
+    "figure.dpi": 150,
+    "savefig.dpi": 200,
+    "savefig.bbox": "tight",
+})
+
 DEFAULT_ALPHA = 2e-4      # s; placeholder until --measured supplies the real one
-DEFAULT_R_CPU = 1.0e7     # propagations/sec
+DEFAULT_R_CPU = 9.7e6     # propagations/sec; MEASURED (see classify.py)
 
 
 def w_min_eff(alpha: float, r_cpu: float, Q):
@@ -56,30 +68,28 @@ def fig_wmin_vs_Q(alpha, r_cpu, ppd_by_family, path: Path) -> None:
     Q = np.logspace(0, 4, 400)
     wm = w_min_eff(alpha, r_cpu, Q)
     fig, ax = plt.subplots(figsize=(9, 5.5))
-    ax.loglog(Q, wm, color="k", lw=2.2, label="W_min_eff(Q) = alpha*R_cpu / Q")
+    ax.loglog(Q, wm, color="k", lw=2.4, label="break-even work (∝ 1/parallel)")
 
     cmap = plt.cm.viridis(np.linspace(0, 0.9, len(ppd_by_family)))
     for (fam, ppd), c in zip(sorted(ppd_by_family.items()), cmap):
-        K = alpha * r_cpu / ppd                 # Q where single decision pays off
+        K = alpha * r_cpu / ppd                 # parallel solves where one decision pays off
         ax.axhline(ppd, color=c, ls=":", lw=1.3)
-        ax.plot([K], [ppd], "o", color=c, ms=7,
-                label=f"{fam}: ppd~{ppd:.0f}, K~{K:,.0f}")
+        ax.plot([K], [ppd], "o", color=c, ms=8,
+                label=f"{fam} ({ppd:.0f}/dec, K={K:,.0f})")
 
     ax.axhline(1, color="grey", lw=0.6)
-    ax.set_xlabel("Portfolio depth, Q  (independent instances in flight)", fontsize=11)
-    ax.set_ylabel("Effective break-even work per trip, W_min_eff  (propagations)",
-                  fontsize=11)
-    ax.set_title("E7c: portfolio overlap hides the round trip\n"
-                 f"(alpha = {alpha*1e6:.0f} us measured,  R_cpu = {r_cpu:.0e} prop/s;"
-                 f"  dotted = family chunk size, marker = depth K where 1 decision pays off)",
-                 fontsize=10)
-    ax.legend(fontsize=8, loc="upper right", title="family break-even depth K",
+    ax.set_xlabel("Independent solves in parallel")
+    ax.set_ylabel("Break-even work per round trip (propagations)")
+    ax.set_title(f"Parallel solves hide the round-trip latency "
+                 f"(link latency {alpha*1e6:.0f} µs)", fontsize=13)
+    ax.legend(fontsize=8.5, loc="upper right",
+              title="Family (props/dec, break-even depth K)", title_fontsize=8.5,
               ncol=2)
     ax.grid(True, which="both", alpha=0.25)
     ax.set_xlim(1, Q[-1])
     ax.set_ylim(1, w_min_eff(alpha, r_cpu, 1) * 1.5)
     fig.tight_layout()
-    fig.savefig(path, dpi=150)
+    fig.savefig(path)
     plt.close(fig)
 
 
@@ -89,24 +99,23 @@ def fig_wall_shrinks(alpha, r_cpu, ppd_by_family, path: Path,
     fams = sorted(ppd_by_family)
     x = np.arange(len(fams))
     width = 0.8 / len(depths)
+    labels = {1: "1 (no overlap)", 10: "10 parallel", 100: "100 parallel"}
     fig, ax = plt.subplots(figsize=(9, 5.5))
     for i, Q in enumerate(depths):
         vals = [alpha * r_cpu / (Q * ppd_by_family[f]) for f in fams]
-        ax.bar(x + i * width, vals, width,
-               label=f"Q = {Q}" + ("  (no overlap)" if Q == 1 else ""))
+        ax.bar(x + i * width, vals, width, label=labels.get(Q, f"{Q} parallel"))
     ax.set_yscale("log")
-    ax.axhline(1, color="k", ls="--", lw=1, label="B_req = 1 (single decision pays off)")
+    ax.axhline(1, color="k", ls="--", lw=1.2, label="break-even")
     ax.set_xticks(x + width * (len(depths) - 1) / 2)
     ax.set_xticklabels(fams, rotation=30, ha="right")
-    ax.set_ylabel("Required batching factor B_req  (decisions / round trip)", fontsize=11)
-    ax.set_xlabel("benchmark family", fontsize=11)
-    ax.set_title("E7c: portfolio depth shrinks the offload wall\n"
-                 f"(B_req = alpha*R_cpu / (Q*ppd);  alpha = {alpha*1e6:.0f} us measured)",
-                 fontsize=11)
-    ax.legend(fontsize=8.5)
+    ax.set_ylabel("Decisions' work per round trip to break even")
+    ax.set_xlabel("Benchmark family")
+    ax.set_title(f"Parallel solves shrink the offload requirement "
+                 f"(link latency {alpha*1e6:.0f} µs)", fontsize=13)
+    ax.legend(title="Solves in parallel", fontsize=9.5, title_fontsize=9.5)
     ax.grid(True, axis="y", which="both", alpha=0.25)
     fig.tight_layout()
-    fig.savefig(path, dpi=150)
+    fig.savefig(path)
     plt.close(fig)
 
 
@@ -139,7 +148,7 @@ def main() -> None:
 
     # cross-check required by definition of done
     wmin_q1 = w_min_eff(alpha, args.r_cpu, 1)
-    print(f"alpha = {alpha*1e6:.1f} us   R_cpu = {args.r_cpu:.0e} prop/s")
+    print(f"alpha = {alpha*1e6:.1f} us   R_cpu = {args.r_cpu:.1e} prop/s")
     print(f"cross-check: W_min_eff(Q=1) = {float(wmin_q1):,.0f}  "
           f"(should equal no-overlap W_min)\n")
 

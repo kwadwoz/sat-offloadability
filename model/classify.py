@@ -60,6 +60,19 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+# Consistent, legible, high-quality rendering across every figure.
+plt.rcParams.update({
+    "font.size": 12,
+    "axes.titlesize": 14,
+    "axes.labelsize": 12.5,
+    "legend.fontsize": 10,
+    "xtick.labelsize": 11,
+    "ytick.labelsize": 11,
+    "figure.dpi": 150,
+    "savefig.dpi": 200,
+    "savefig.bbox": "tight",
+})
+
 # Swept coupling regimes (representative, not universal): tight on-chip / PCIe
 # class up to a real measured link. The ECP5 entry is filled in from a measured
 # params.json when --measured is passed (see load_measured), otherwise it is a
@@ -70,7 +83,8 @@ ALPHA_REGIMES = {
     "tuned-link (50 us)": 5e-5,
     "ECP5 link (~200 us)": 2e-4,
 }
-DEFAULT_R_CPU = 1.0e7   # propagations/sec; MiniSat steady-state, swept-able
+DEFAULT_R_CPU = 9.7e6   # propagations/sec; MEASURED (regression of propagations
+                        # vs cpu_time across 5,199 runs, R^2=0.96), swept-able
 BETA = 8e-8             # s/byte (~100 Mbit/s inverse bandwidth)
 
 
@@ -103,15 +117,16 @@ def classify(df: pd.DataFrame, r_cpu: float) -> pd.DataFrame:
 def fig_distributions(df: pd.DataFrame, r_cpu: float, path: Path) -> None:
     """E4 figure: per-family props-per-decision distributions."""
     fams = sorted(df["family"].unique())
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(8.5, 5.5))
     data = [df.loc[df.family == f, "props_per_decision"].values for f in fams]
     ax.boxplot(data, tick_labels=fams, showfliers=False)
-    ax.set_ylabel("propagations per decision (work batch / decision)")
-    ax.set_xlabel("benchmark family")
-    ax.set_title("E4: per-decision work-batch distributions")
+    ax.set_ylabel("Propagations per decision")
+    ax.set_xlabel("Benchmark family")
+    ax.set_title("Propagation work per decision, by family")
     plt.xticks(rotation=30, ha="right")
+    ax.grid(True, axis="y", alpha=0.3)
     fig.tight_layout()
-    fig.savefig(path, dpi=150)
+    fig.savefig(path)
     plt.close(fig)
 
 
@@ -124,26 +139,33 @@ def fig_batching_factor(df: pd.DataFrame, r_cpu: float, path: Path) -> None:
     """
     fams = sorted(df["family"].unique())
     alphas = np.logspace(-6.5, -3.5, 60)
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(8.5, 5.5))
     for f in fams:
         ppd = np.median(df.loc[df.family == f, "props_per_decision"].values)
         b_req = w_min(alphas, r_cpu) / ppd
-        ax.plot(alphas * 1e6, b_req, label=f"{f} (ppd~{ppd:.0f})", lw=1.5)
-    ax.axhline(1.0, color="k", ls="--", lw=1.2)
-    ax.text(ax.get_xlim()[0] * 1.1, 1.0, " B_req = 1 (single decision pays off)",
-            va="bottom", fontsize=8)
-    for label, alpha in ALPHA_REGIMES.items():
-        ax.axvline(alpha * 1e6, color="grey", ls=":", lw=0.7, alpha=0.6)
+        ax.plot(alphas * 1e6, b_req, lw=1.8, label=f"{f} ({ppd:.0f}/dec)")
+    # fix the axes to log BEFORE reading limits for annotation placement
     ax.set_xscale("log")
     ax.set_yscale("log")
-    ax.set_xlabel("fixed round-trip latency alpha (us)")
-    ax.set_ylabel("required batching factor B_req (decisions / round trip)")
-    ax.set_title(f"E3: work that must be aggregated to break even "
-                 f"(R_cpu = {r_cpu:.0e})")
-    ax.legend(fontsize=8, loc="upper left")
+    ax.set_xlim(alphas[0] * 1e6, alphas[-1] * 1e6)
+    ax.axhline(1.0, color="k", ls="--", lw=1.3)
+    ax.text(alphas[0] * 1e6 * 1.1, 1.15, "single decision suffices",
+            va="bottom", fontsize=9)
+    # mark the measured hardware latency, if present among the regimes
+    for label, alpha in ALPHA_REGIMES.items():
+        if "measured" in label.lower():
+            ax.axvline(alpha * 1e6, color="firebrick", ls=":", lw=1.4)
+            ax.text(alpha * 1e6, ax.get_ylim()[1], " measured ECP5 ",
+                    rotation=90, va="top", ha="right", fontsize=9,
+                    color="firebrick")
+    ax.set_xlabel("Round-trip latency (µs)")
+    ax.set_ylabel("Decisions' work per round trip to break even")
+    ax.set_title("Work required per round trip to beat the CPU")
+    ax.legend(title="Family (props/decision)", fontsize=9, title_fontsize=9.5,
+              loc="upper left")
     ax.grid(True, which="both", alpha=0.3)
     fig.tight_layout()
-    fig.savefig(path, dpi=150)
+    fig.savefig(path)
     plt.close(fig)
 
 
@@ -159,44 +181,41 @@ def fig_roofline(r_cpu: float, alpha: float, alpha_label: str, path: Path,
     s = payload_bytes
     wm = w_min(alpha, r_cpu)
 
-    # hardware-speed curves, labelled relative to the CPU rate
-    speeds = [(1e6, "0.1x CPU"), (1e7, "1x CPU"), (1e8, "10x CPU"), (1e9, "100x CPU")]
+    # accelerator-speed curves, labelled relative to the CPU's own speed
+    speeds = [(1e6, "0.1x CPU"), (1e7, "1x CPU"),
+              (1e8, "10x CPU"), (1e9, "100x CPU")]
     colors = ["#9467bd", "#1f77b4", "#2ca02c", "#d62728"]
     for (r_hw, rel), c in zip(speeds, colors):
         P = W / (alpha + BETA * s + W / r_hw)
-        ax.loglog(W, P, color=c, lw=2,
-                  label=f"accelerator R_hw = {r_hw:.0e} prop/s  ({rel})")
+        ax.loglog(W, P, color=c, lw=2.2, label=rel)
 
     ax.set_xlim(W[0], W[-1])
     ax.set_ylim(1e3, 3e9)
 
     # CPU baseline and break-even threshold
-    ax.axhline(r_cpu, color="k", ls="-", lw=1.6)
-    ax.text(W[-1], r_cpu * 1.3, f"CPU baseline  R_cpu = {r_cpu:.0e} prop/s",
-            fontsize=9, va="bottom", ha="right")
-    ax.axvline(wm, color="k", ls="--", lw=1.4)
-    ax.text(wm * 1.25, 4e8, f"break-even\nW_min = {wm:,.0f}",
-            fontsize=9, va="center", ha="left")
+    ax.axhline(r_cpu, color="k", ls="-", lw=1.7)
+    ax.text(W[-1], r_cpu * 1.3, "CPU", fontsize=10, va="bottom", ha="right")
+    ax.axvline(wm, color="k", ls="--", lw=1.5)
+    ax.text(wm * 1.25, 4e8, f"break-even\n(~{wm:,.0f})",
+            fontsize=9.5, va="center", ha="left")
 
-    # loss zone: any offload shipping less than W_min loses to the CPU
+    # loss zone: any offload shipping less than the break-even loses to the CPU
     ax.axvspan(W[0], wm, color="red", alpha=0.07)
-    ax.text(np.sqrt(W[0] * wm), 5e6, "LOSS ZONE\noffload never\nbeats CPU\n(any R_hw)",
-            color="#b22222", fontsize=9, ha="center", va="center")
+    ax.text(np.sqrt(W[0] * wm), 5e6, "loss zone\n(never beats CPU)",
+            color="#b22222", fontsize=9.5, ha="center", va="center")
 
     # regime annotations
-    ax.text(4e5, 6e6, "hardware-bound\n(throughput ceiling)", fontsize=8.5,
-            ha="center", color="dimgrey")
-    ax.text(4e4, 6e3, "latency-bound\n(alpha dominates)", fontsize=8.5,
-            ha="center", color="dimgrey")
-    ax.set_xlabel("Work shipped per round trip, W  (propagations)", fontsize=11)
-    ax.set_ylabel("End-to-end offload throughput, P  (propagations / sec)", fontsize=11)
-    ax.set_title("E3 roofline: when does offloading beat the CPU?\n"
-                 f"(alpha = {alpha*1e6:.0f} us [{alpha_label}],  payload s = {s} B)",
-                 fontsize=11)
-    ax.legend(fontsize=8.5, loc="lower right", title="swept accelerator speed")
+    ax.text(4e5, 6e6, "accelerator-bound", fontsize=9, ha="center", color="dimgrey")
+    ax.text(4e4, 6e3, "latency-bound", fontsize=9, ha="center", color="dimgrey")
+    ax.set_xlabel("Work per round trip (propagations)")
+    ax.set_ylabel("Throughput (propagations / s)")
+    ax.set_title(f"Offload throughput vs. work per round trip "
+                 f"(link latency {alpha*1e6:.0f} µs)", fontsize=13)
+    ax.legend(loc="lower right", title="Accelerator speed",
+              fontsize=9.5, title_fontsize=10)
     ax.grid(True, which="both", alpha=0.25)
     fig.tight_layout()
-    fig.savefig(path, dpi=150)
+    fig.savefig(path)
     plt.close(fig)
 
 
