@@ -1,0 +1,5 @@
+dataset,factor,eta_sq,groups,n
+satlib_random,family,0.7922,11,5599
+satlib_industrial,family,0.5481,9,112
+industrial_complete,solver,0.1526,3,165
+industrial_complete,family,0.3866,8,165
