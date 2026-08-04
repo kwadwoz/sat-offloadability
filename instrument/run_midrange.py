@@ -45,16 +45,21 @@ SOLVERS = {
         "cmd": lambda f, lim: ["minisat", f"-cpu-lim={lim}", f],
         "prop": re.compile(r"^propagations\s*:\s*(\d+)", re.M),
         "dec": re.compile(r"^decisions\s*:\s*(\d+)", re.M),
+        "time": re.compile(r"^CPU time\s*:\s*([\d.]+)", re.M),
     },
     "cadical": {
         "cmd": lambda f, lim: ["cadical", "-t", str(lim), f],
         "prop": re.compile(r"^c propagations:\s*(\d+)", re.M),
         "dec": re.compile(r"^c decisions:\s*(\d+)", re.M),
+        "time": re.compile(r"^c total process time since initialization:\s*([\d.]+)", re.M),
     },
     "kissat": {
         "cmd": lambda f, lim: ["kissat", "--statistics", f"--time={lim}", f],
         "prop": re.compile(r"^c propagations:\s*(\d+)", re.M),
         "dec": re.compile(r"^c decisions:\s*(\d+)", re.M),
+        # kissat prints a rounded magnitude first ("2m", "5s") and the real
+        # value last -- anchor on "seconds" or we capture the wrong field
+        "time": re.compile(r"^c process-time:.*?([\d.]+)\s+seconds", re.M),
     },
 }
 _RESULT = {10: "SAT", 20: "UNSAT"}
@@ -120,6 +125,11 @@ def run(solver: str, cnf: Path, lim: int) -> dict:
         row["variables"] = mv.group(1)
     if mc:
         row["clauses"] = mc.group(1)
+    mt = spec["time"].search(out)
+    if mt:
+        # needed for this solver's own R_cpu: B_req divides that solver's ppd by
+        # that solver's propagation rate, never by another's
+        row["cpu_time"] = mt.group(1)
     mp, md = spec["prop"].search(out), spec["dec"].search(out)
     if not (mp and md):
         # CaDiCaL omits the decisions line entirely at zero decisions, which is
@@ -142,7 +152,13 @@ def main() -> None:
     ap.add_argument("--uris", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--gate-lim", type=int, default=30,
-                    help="seconds MiniSat gets; instances it cannot finish are dropped")
+                    help="seconds each solver gets")
+    ap.add_argument("--solvers", nargs="+", default=["minisat", "cadical", "kissat"],
+                    choices=list(SOLVERS))
+    ap.add_argument("--gate", default="minisat",
+                    help="solver that must complete before the others are run, "
+                         "or 'none' to run every solver on every instance "
+                         "(use 'none' when the gate solver cannot finish the set)")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--net-timeout", type=float, default=180.0)
     ap.add_argument("--retries", type=int, default=4)
@@ -189,21 +205,26 @@ def main() -> None:
                     continue
                 fails = 0
 
-                gate = run("minisat", cnf, args.gate_lim)
-                gate["instance"] = cnf.name
-                if gate["status"] != "ok" or not gate["completed"]:
-                    # failed the gate: too hard for MiniSat, or no search at all
-                    gate["gate"] = "minisat_incomplete" if not gate["completed"] else gate["status"]
-                    w.writerow(gate)
-                    fh.flush()
-                    done.add(uid)
-                    print(f"[{i}/{len(urls)}] {cnf.name[:48]}: DROP ({gate['gate']})",
-                          file=sys.stderr)
-                    continue
+                rows = []
+                if args.gate != "none":
+                    gate = run(args.gate, cnf, args.gate_lim)
+                    gate["instance"] = cnf.name
+                    if gate["status"] != "ok" or not gate["completed"]:
+                        # failed the gate: too hard for it, or no search at all
+                        gate["gate"] = (f"{args.gate}_incomplete"
+                                        if not gate["completed"] else gate["status"])
+                        w.writerow(gate)
+                        fh.flush()
+                        done.add(uid)
+                        print(f"[{i}/{len(urls)}] {cnf.name[:48]}: DROP ({gate['gate']})",
+                              file=sys.stderr)
+                        continue
+                    gate["gate"] = "kept"
+                    rows.append(gate)
 
-                gate["gate"] = "kept"
-                rows = [gate]
-                for s in ("cadical", "kissat"):
+                for s in args.solvers:
+                    if args.gate != "none" and s == args.gate:
+                        continue
                     r = run(s, cnf, args.gate_lim)
                     r["instance"] = cnf.name
                     r["gate"] = "kept"
