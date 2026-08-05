@@ -72,7 +72,10 @@ def main() -> None:
     # in prose in the paper. Single row, no legend panel -- everything else
     # belongs in the caption.
     fams = sorted((f for f in reps if f in VALIDATED), key=lambda f: -med_ppd[f])
-    fig, axes = plt.subplots(1, 5, figsize=(19, 4.6), facecolor="white")
+    # smaller canvas at the same aspect: marks and text are sized in points,
+    # so a narrower figure survives the shrink to \textwidth with the strokes
+    # still readable
+    fig, axes = plt.subplots(1, 5, figsize=(17, 4.3), facecolor="white")
     rng = random.Random(0)
 
     with tempfile.TemporaryDirectory() as td:
@@ -109,11 +112,11 @@ def main() -> None:
             if len(edges) > EDGE_CAP:
                 edges = rng.sample(edges, EDGE_CAP)
             segs = [((xs[a], ys[a]), (xs[b], ys[b])) for a, b in edges]
-            ax.add_collection(LineCollection(segs, colors="#c3c7cc",
-                                             linewidths=0.22, alpha=0.3, zorder=1))
-            ax.scatter(xs, ys, s=5.0, c=node_c,
-                       linewidths=0, zorder=2, rasterized=True)
-            ax.set_title(fam, fontsize=13, color="#1f2328", pad=8)
+            ax.add_collection(LineCollection(segs, colors="#8b929a",
+                                             linewidths=0.6, alpha=0.6, zorder=1))
+            ax.scatter(xs, ys, s=14.0, c=node_c, edgecolors="white",
+                       linewidths=0.35, zorder=2, rasterized=True)
+            ax.set_title(fam, fontsize=14, color="#1f2328", pad=7)
             ax.text(0.5, -0.045,
                     f"$Q$={float(r['modularity']):.2f}    "
                     f"median ppd={med_ppd[fam]:.0f}    "
@@ -130,7 +133,7 @@ def main() -> None:
              "Colour marks the 8 largest Louvain communities per instance; "
              "all smaller communities are grey. Communities are numbered "
              "per instance, so colours are not comparable across panels.",
-             ha="center", va="top", fontsize=10, color="#57606a")
+             ha="center", va="top", fontsize=11, color="#57606a")
     out = ROOT.parent / "figures" / "family_graphs.png"
     fig.savefig(out, dpi=300, bbox_inches="tight")
     fig.savefig(out.with_suffix(".pdf"), bbox_inches="tight")
