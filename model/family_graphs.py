@@ -72,10 +72,9 @@ def main() -> None:
     # in prose in the paper. Single row, no legend panel -- everything else
     # belongs in the caption.
     fams = sorted((f for f in reps if f in VALIDATED), key=lambda f: -med_ppd[f])
-    # smaller canvas at the same aspect: marks and text are sized in points,
-    # so a narrower figure survives the shrink to \textwidth with the strokes
-    # still readable
-    fig, axes = plt.subplots(1, 5, figsize=(17, 4.3), facecolor="white")
+    # 2x3 for a single \columnwidth slot: five panels in one row would be
+    # under an inch wide each once scaled into an ACM column
+    fig, axes = plt.subplots(2, 3, figsize=(5.6, 3.6), facecolor="white")
     rng = random.Random(0)
 
     with tempfile.TemporaryDirectory() as td:
@@ -113,27 +112,24 @@ def main() -> None:
                 edges = rng.sample(edges, EDGE_CAP)
             segs = [((xs[a], ys[a]), (xs[b], ys[b])) for a, b in edges]
             ax.add_collection(LineCollection(segs, colors="#8b929a",
-                                             linewidths=0.6, alpha=0.6, zorder=1))
-            ax.scatter(xs, ys, s=14.0, c=node_c, edgecolors="white",
-                       linewidths=0.35, zorder=2, rasterized=True)
-            ax.set_title(fam, fontsize=14, color="#1f2328", pad=7)
-            ax.text(0.5, -0.045,
-                    f"$Q$={float(r['modularity']):.2f}    "
-                    f"median ppd={med_ppd[fam]:.0f}    "
+                                             linewidths=0.35, alpha=0.6, zorder=1))
+            ax.scatter(xs, ys, s=4.5, c=node_c, edgecolors="white",
+                       linewidths=0.2, zorder=2, rasterized=True)
+            ax.set_title(fam, fontsize=9, color="#1f2328", pad=4)
+            ax.text(0.5, -0.02,
+                    f"$Q$={float(r['modularity']):.2f}   "
+                    f"ppd={med_ppd[fam]:.0f}\n"
                     f"$\\rho$={VALIDATED[fam]:+.2f}",
-                    transform=ax.transAxes, fontsize=10.5, color="#57606a",
-                    ha="center", va="top")
+                    transform=ax.transAxes, fontsize=7.5, color="#57606a",
+                    ha="center", va="top", linespacing=1.35)
             ax.set_xlim(-1.09, 1.09)
             ax.set_ylim(-1.09, 1.09)
             ax.set_aspect("equal")
             ax.axis("off")
             print(f"{fam}: {g.vcount()} nodes drawn", file=sys.stderr, flush=True)
-    fig.tight_layout()
-    fig.text(0.5, -0.02,
-             "Colour marks the 8 largest Louvain communities per instance; "
-             "all smaller communities are grey. Communities are numbered "
-             "per instance, so colours are not comparable across panels.",
-             ha="center", va="top", fontsize=11, color="#57606a")
+    for ax in axes.flat[len(fams):]:   # unused cell in the 2x3 grid
+        ax.axis("off")
+    fig.tight_layout(h_pad=0.2, w_pad=0.4)
     out = ROOT.parent / "figures" / "family_graphs.png"
     fig.savefig(out, dpi=300, bbox_inches="tight")
     fig.savefig(out.with_suffix(".pdf"), bbox_inches="tight")
