@@ -19,7 +19,7 @@ import csv
 import random
 import sys
 import tempfile
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 from statistics import median
 
@@ -40,6 +40,12 @@ NODE_CAP = 4_000      # largest component is truncated beyond this
 # identity is per-panel and anonymous, so reuse across panels is fine
 COLORS = ["#3d7fe0", "#e0653d", "#2fa377", "#8a63d2", "#d2a53f",
           "#c25793", "#5aa9c9", "#8c8c46"]
+TAIL = "#c9ced4"   # communities beyond the 8 largest
+# families whose within-family Q->ppd slope survived preregistered
+# out-of-sample replication (E25/E26), with the replicated rho
+VALIDATED = {"bitvector": -0.64, "prime-factoring": +0.74,
+             "planning": +0.63, "scheduling": +0.58, "miter": +0.46}
+GOOD = "#1a7f4b"   # status-good ink for the validated tag
 
 
 def build_vig(clauses):
@@ -62,8 +68,11 @@ def main() -> None:
     reps = {f: min(rs, key=lambda r: int(r["n_clauses"])) for f, rs in by_fam.items()}
     med_ppd = {f: median(float(r["ppd"]) for r in rs) for f, rs in by_fam.items()}
 
-    fams = sorted(reps, key=lambda f: -med_ppd[f])
-    fig, axes = plt.subplots(4, 4, figsize=(17, 17), facecolor="white")
+    # only the five replication-validated families; the rest are described
+    # in prose in the paper. Single row, no legend panel -- everything else
+    # belongs in the caption.
+    fams = sorted((f for f in reps if f in VALIDATED), key=lambda f: -med_ppd[f])
+    fig, axes = plt.subplots(1, 5, figsize=(19, 4.6), facecolor="white")
     rng = random.Random(0)
 
     with tempfile.TemporaryDirectory() as td:
@@ -79,38 +88,53 @@ def main() -> None:
                 g = g.components().giant()
             ig.set_random_number_generator(random.Random(0))
             memb = g.community_multilevel().membership
-            xy = g.layout_fruchterman_reingold(niter=300)
+            # colour only the len(COLORS) largest communities and grey the
+            # tail: cycling the palette would make two unrelated communities
+            # share a colour, which a reader would misread as one cluster
+            sizes = Counter(memb)
+            top = {c: i for i, (c, _) in enumerate(sizes.most_common(len(COLORS)))}
+            node_c = [COLORS[top[m]] if m in top else TAIL for m in memb]
+            n_comm = len(sizes)
+            xy = g.layout_fruchterman_reingold(niter=1500)
+            # scale each layout uniformly into the same unit square: with
+            # equal aspect, differing extents would give the panels different
+            # box heights and stagger the titles
             xs = [p[0] for p in xy]
             ys = [p[1] for p in xy]
+            cx, cy = (max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2
+            half = max(max(xs) - min(xs), max(ys) - min(ys)) / 2 or 1.0
+            xs = [(x - cx) / half for x in xs]
+            ys = [(y - cy) / half for y in ys]
             edges = g.get_edgelist()
             if len(edges) > EDGE_CAP:
                 edges = rng.sample(edges, EDGE_CAP)
             segs = [((xs[a], ys[a]), (xs[b], ys[b])) for a, b in edges]
-            ax.add_collection(LineCollection(segs, colors="#b8bcc2",
-                                             linewidths=0.25, alpha=0.35, zorder=1))
-            ax.scatter(xs, ys, s=3.5,
-                       c=[COLORS[m % len(COLORS)] for m in memb],
-                       linewidths=0, zorder=2)
-            ax.set_title(fam, fontsize=12, color="#1f2328", pad=6)
-            ax.text(0.02, 0.02,
-                    f"Q={float(r['modularity']):.2f}   median ppd={med_ppd[fam]:.0f}",
-                    transform=ax.transAxes, fontsize=9.5, color="#57606a")
+            ax.add_collection(LineCollection(segs, colors="#c3c7cc",
+                                             linewidths=0.22, alpha=0.3, zorder=1))
+            ax.scatter(xs, ys, s=5.0, c=node_c,
+                       linewidths=0, zorder=2, rasterized=True)
+            ax.set_title(fam, fontsize=13, color="#1f2328", pad=8)
+            ax.text(0.5, -0.045,
+                    f"$Q$={float(r['modularity']):.2f}    "
+                    f"median ppd={med_ppd[fam]:.0f}    "
+                    f"$\\rho$={VALIDATED[fam]:+.2f}",
+                    transform=ax.transAxes, fontsize=10.5, color="#57606a",
+                    ha="center", va="top")
+            ax.set_xlim(-1.09, 1.09)
+            ax.set_ylim(-1.09, 1.09)
             ax.set_aspect("equal")
             ax.axis("off")
             print(f"{fam}: {g.vcount()} nodes drawn", file=sys.stderr, flush=True)
-    for ax in axes.flat[len(fams):]:
-        ax.axis("off")
-    axes.flat[len(fams)].text(
-        0.0, 0.85,
-        "Variable incidence graphs,\none representative instance per family.\n\n"
-        "Node = variable; edge = shared clause;\ncolor = Louvain community.\n\n"
-        "Q = this instance's modularity.\nppd = family median (MiniSat, E23).\n\n"
-        "Panels sorted by median ppd.",
-        fontsize=11, color="#1f2328", va="top")
     fig.tight_layout()
+    fig.text(0.5, -0.02,
+             "Colour marks the 8 largest Louvain communities per instance; "
+             "all smaller communities are grey. Communities are numbered "
+             "per instance, so colours are not comparable across panels.",
+             ha="center", va="top", fontsize=10, color="#57606a")
     out = ROOT.parent / "figures" / "family_graphs.png"
-    fig.savefig(out, dpi=160, bbox_inches="tight")
-    print(f"wrote {out}", file=sys.stderr)
+    fig.savefig(out, dpi=300, bbox_inches="tight")
+    fig.savefig(out.with_suffix(".pdf"), bbox_inches="tight")
+    print(f"wrote {out} (+ .pdf)", file=sys.stderr)
 
 
 if __name__ == "__main__":
