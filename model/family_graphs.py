@@ -118,7 +118,7 @@ def main() -> None:
             ax.set_title(fam, fontsize=9, color="#1f2328", pad=4)
             ax.text(0.5, -0.02,
                     f"$Q$={float(r['modularity']):.2f}   "
-                    f"ppd={med_ppd[fam]:.0f}\n"
+                    f"PR={med_ppd[fam]:.0f}\n"
                     f"$\\rho$={VALIDATED[fam]:+.2f}",
                     transform=ax.transAxes, fontsize=7.5, color="#57606a",
                     ha="center", va="top", linespacing=1.35)
