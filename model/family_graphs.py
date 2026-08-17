@@ -132,7 +132,9 @@ def main() -> None:
     fig.tight_layout(h_pad=0.2, w_pad=0.4)
     out = ROOT.parent / "figures" / "family_graphs.png"
     fig.savefig(out, dpi=300, bbox_inches="tight")
-    fig.savefig(out.with_suffix(".pdf"), bbox_inches="tight")
+    # dpi applies to the rasterized node scatter inside the PDF; without it
+    # matplotlib falls back to figure.dpi (100), under ACM's 300 dpi floor
+    fig.savefig(out.with_suffix(".pdf"), dpi=300, bbox_inches="tight")
     print(f"wrote {out} (+ .pdf)", file=sys.stderr)
 
 
