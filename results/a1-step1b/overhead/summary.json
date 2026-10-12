@@ -1,0 +1,44 @@
+{
+  "seed": 20261011,
+  "repetitions": 5,
+  "warmups_per_mode": 1,
+  "preprocessing": true,
+  "timing": "Host monotonic process wall time including launch, parsing, preprocessing, solve and CSV writes/close; temporary file storage.",
+  "binary_sha256": {
+    "original": "6e18ae64a12bc5316102e03756f97bb74ae3cead2e255e1fffa868f3ac1f93ef",
+    "disabled": "17413a1d904271b943f212ead3c7f4d8fe12bba923906bea62d4791e0bd72ed5",
+    "enabled": "17413a1d904271b943f212ead3c7f4d8fe12bba923906bea62d4791e0bd72ed5"
+  },
+  "instances": [
+    {
+      "instance": "benchmarks/uf250-1065/ai/hoos/Shortcuts/UF250.1065.100/uf250-01.cnf",
+      "median_process_wall_ns": {
+        "original": 170800709,
+        "disabled": 171642791,
+        "enabled": 180417417
+      },
+      "enabled_over_original": 1.0563036772874286,
+      "disabled_over_original": 1.0049302020169015
+    },
+    {
+      "instance": "benchmarks/uf250-1065/ai/hoos/Shortcuts/UF250.1065.100/uf250-010.cnf",
+      "median_process_wall_ns": {
+        "original": 183498125,
+        "disabled": 183496042,
+        "enabled": 195342834
+      },
+      "enabled_over_original": 1.0645494824538397,
+      "disabled_over_original": 0.9999886483853718
+    },
+    {
+      "instance": "benchmarks/uf250-1065/ai/hoos/Shortcuts/UF250.1065.100/uf250-0100.cnf",
+      "median_process_wall_ns": {
+        "original": 2352030042,
+        "disabled": 2351316458,
+        "enabled": 2481263125
+      },
+      "enabled_over_original": 1.054945336875931,
+      "disabled_over_original": 0.9996966093173737
+    }
+  ]
+}

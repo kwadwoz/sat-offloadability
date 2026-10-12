@@ -23,7 +23,7 @@ def main():
                 order=list(modes); rng.shuffle(order)
                 for mode in order:
                     cmd=[modes[mode],'-pre','-verb=0','-rnd-seed=91648253']
-                    if mode=='enabled': cmd.append('-bcp-log='+str(d/'calls.csv'))
+                    if mode=='enabled': cmd.append('-bcp-log='+str(d/'calls.bin'))
                     start=time.perf_counter_ns(); p=subprocess.run(cmd+[str(inp)],capture_output=True,timeout=30); elapsed=time.perf_counter_ns()-start
                     assert p.returncode in (10,20)
                     if expected is None: expected=p.returncode

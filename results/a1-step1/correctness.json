@@ -1,0 +1,13 @@
+{
+  "seed": 20261011,
+  "formulas": 105,
+  "solver_runs": 315,
+  "all_passed": true,
+  "logged_calls": 319,
+  "phases_seen": [
+    "parsing",
+    "preprocessing",
+    "search"
+  ],
+  "invalid_log_path_rejected": true
+}

@@ -1,0 +1,128 @@
+--- a/minisat/core/Solver.cc
++++ b/minisat/core/Solver.cc
+@@ -513,28 +513,44 @@
+     return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+ }
+ 
++static const int bcp_buffer_records = 65536;
++
+ void Solver::openBcpLog(const char* path)
+ {
+-    bcp_log = fopen(path, "w");
++    bcp_log = fopen(path, "wb");
+     if (!bcp_log) { perror("BCP log"); exit(1); }
+-    fprintf(bcp_log, "call_id,phase,pending_entries,decision_level,decisions_before,propagations_before,trail_before,status,processed_entries,implied_assignments,decisions_after,propagations_after,trail_after,kernel_ns,observed_ns_before_write,start_ns,conflicts_before,restarts_before\n");
++    // Header: magic, format version, record size. Records are native-endian.
++    const uint32_t header[4] = { 0x47504342u /* "BCPG" */, 1u, (uint32_t)sizeof(BcpRecord), 0u };
++    fwrite(header, sizeof(header), 1, bcp_log);
++    bcp_buffer.capacity(bcp_buffer_records);
+     std::string phase_path = std::string(path) + ".phases.csv";
+     bcp_phase_log = fopen(phase_path.c_str(), "w");
+     if (!bcp_phase_log) { perror("BCP phase log"); exit(1); }
+     bcp_origin_ns = steadyNs();
++    bcp_phase_seq = 0;
+     fprintf(bcp_phase_log, "phase,start_ns\n%s,0\n", bcp_phase);
+ }
+ 
+ void Solver::setBcpPhase(const char* phase)
+ {
+     bcp_phase = phase;
+-    if (bcp_phase_log)
++    if (bcp_phase_log) {
++        bcp_phase_seq++;
+         fprintf(bcp_phase_log, "%s,%llu\n", phase, (unsigned long long)(steadyNs() - bcp_origin_ns));
++    }
+ }
+ 
++void Solver::flushBcpBuffer()
++{
++    if (bcp_buffer.size() > 0 && fwrite(&bcp_buffer[0], sizeof(BcpRecord), bcp_buffer.size(), bcp_log) != (size_t)bcp_buffer.size()) {
++        fprintf(stderr, "BCP log write failed\n"); exit(1); }
++    bcp_buffer.clear();
++}
++
+ void Solver::closeBcpLog()
+ {
+     bool failed = false;
++    if (bcp_log) flushBcpBuffer();
+     if (bcp_phase_log) {
+         fprintf(bcp_phase_log, "closed,%llu\n", (unsigned long long)(steadyNs() - bcp_origin_ns));
+         failed = ferror(bcp_phase_log);
+@@ -554,27 +570,28 @@
+     if (!bcp_log) return propagateOriginal();
+     typedef std::chrono::steady_clock Clock;
+     const Clock::time_point begin = Clock::now();
+-    const int pending = trail.size() - qhead;
+-    const int level_before = decisionLevel();
+-    const int trail_before = trail.size();
+-    const uint64_t decisions_before = decisions;
+-    const uint64_t props_before = propagations;
+-    const uint64_t conflicts_before = conflicts;
+-    const uint64_t restarts_before = starts;
++    BcpRecord r;
++    r.pending_entries = trail.size() - qhead;
++    r.decision_level = decisionLevel();
++    r.trail_before = trail.size();
++    r.decisions_before = decisions;
++    r.propagations_before = propagations;
++    r.conflicts_before = conflicts;
++    r.restarts_before = starts;
++    r.phase_seq = bcp_phase_seq;
+     const Clock::time_point kernel_begin = Clock::now();
+     const CRef result = propagateOriginal();
+     const Clock::time_point kernel_end = Clock::now();
+-    const uint64_t kernel_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(kernel_end - kernel_begin).count();
+-    const uint64_t observed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - begin).count();
+-    const uint64_t start_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(begin.time_since_epoch()).count() - bcp_origin_ns;
+-    fprintf(bcp_log, "%llu,%s,%d,%d,%llu,%llu,%d,%s,%llu,%d,%llu,%llu,%d,%llu,%llu,%llu,%llu,%llu\n",
+-        (unsigned long long)++bcp_call, bcp_phase, pending, level_before,
+-        (unsigned long long)decisions_before, (unsigned long long)props_before,
+-        trail_before, result == CRef_Undef ? "FIXED_POINT" : "CONFLICT",
+-        (unsigned long long)(propagations - props_before), trail.size() - trail_before,
+-        (unsigned long long)decisions, (unsigned long long)propagations, trail.size(),
+-        (unsigned long long)kernel_ns, (unsigned long long)observed_ns, (unsigned long long)start_ns,
+-        (unsigned long long)conflicts_before, (unsigned long long)restarts_before);
++    r.conflict = result != CRef_Undef;
++    r.decisions_after = decisions;
++    r.propagations_after = propagations;
++    r.trail_after = trail.size();
++    r.kernel_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(kernel_end - kernel_begin).count();
++    r.start_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(begin.time_since_epoch()).count() - bcp_origin_ns;
++    r.observed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - begin).count();
++    bcp_call++;
++    bcp_buffer.push(r);
++    if (bcp_buffer.size() == bcp_buffer_records) flushBcpBuffer();
+     return result;
+ }
+ 
+--- a/minisat/core/Solver.h
++++ b/minisat/core/Solver.h
+@@ -162,6 +162,17 @@
+     uint64_t bcp_call = 0;
+     FILE* bcp_phase_log = NULL;   // phase transitions, same clock origin as bcp_log
+     uint64_t bcp_origin_ns = 0;   // steady_clock time at openBcpLog
++    uint32_t bcp_phase_seq = 0;   // row of the phase log in effect
++
++    // Fixed-size binary record; decoded offline by integration/minisat/bcplog.py.
++    struct BcpRecord {
++        uint64_t decisions_before, propagations_before, decisions_after, propagations_after;
++        uint64_t kernel_ns, observed_ns, start_ns, conflicts_before, restarts_before;
++        int32_t  pending_entries, decision_level, trail_before, trail_after;
++        uint32_t phase_seq, conflict;
++    };
++    vec<BcpRecord> bcp_buffer;    // flushed with one fwrite when full
++    void flushBcpBuffer();
+     CRef propagateOriginal();
+ 
+     // Helper structures:
+--- a/minisat/simp/Main.cc
++++ b/minisat/simp/Main.cc
+@@ -67,7 +67,7 @@
+         IntOption    mem_lim("MAIN", "mem-lim","Limit on memory usage in megabytes.\n", 0, IntRange(0, INT32_MAX));
+         BoolOption   strictp("MAIN", "strict", "Validate DIMACS header during parsing.", false);
+ 
+-        StringOption bcp_log("MAIN", "bcp-log", "Optional per-call BCP CSV path.");
++        StringOption bcp_log("MAIN", "bcp-log", "Optional per-call BCP binary log path (decode with integration/minisat/bcplog.py).");
+ 
+         parseOptions(argc, argv, true);
+         

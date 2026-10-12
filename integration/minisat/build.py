@@ -5,6 +5,8 @@ import argparse, hashlib, pathlib, shutil, subprocess, tarfile, urllib.request
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 URL = 'https://github.com/stp/minisat/archive/refs/tags/releases/2.2.1.tar.gz'
 SHA = '432985833596653fcd698ab439588471cc0f2437617d0df2bb191a0252ba423d'
+# Applied in order: P1 per-call logging, call timestamps and phase log, buffered binary records.
+PATCHES = ['bcp-instrumentation.patch', 'bcp-timestamps.patch', 'bcp-buffered-log.patch']
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
@@ -29,8 +31,9 @@ def main():
     original = base / 'minisat-releases-2.2.1'
     modified = base / 'minisat-instrumented'
     shutil.copytree(original, modified)
-    with (ROOT / 'integration/minisat/bcp-instrumentation.patch').open() as patch:
-        subprocess.run(['patch', '-p1'], cwd=modified, stdin=patch, check=True)
+    for name in PATCHES:
+        with (ROOT / 'integration/minisat' / name).open() as patch:
+            subprocess.run(['patch', '-p1'], cwd=modified, stdin=patch, check=True)
     for source, name in [(original, 'original'), (modified, 'instrumented')]:
         target = base / ('build-' + name)
         subprocess.run(['cmake', '-S', str(source), '-B', str(target),

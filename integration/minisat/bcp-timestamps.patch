@@ -1,0 +1,102 @@
+--- a/minisat/core/Solver.cc
++++ b/minisat/core/Solver.cc
+@@ -22,6 +22,7 @@
+ #include <chrono>
+ #include <cstdio>
+ #include <cstdlib>
++#include <string>
+ 
+ #include "minisat/mtl/Alg.h"
+ #include "minisat/mtl/Sort.h"
+@@ -507,21 +508,45 @@
+ |    Post-conditions:
+ |      * the propagation queue is empty, even if there was a conflict.
+ |________________________________________________________________________________________________@*/
++static uint64_t steadyNs()
++{
++    return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
++}
++
+ void Solver::openBcpLog(const char* path)
+ {
+     bcp_log = fopen(path, "w");
+     if (!bcp_log) { perror("BCP log"); exit(1); }
+-    fprintf(bcp_log, "call_id,phase,pending_entries,decision_level,decisions_before,propagations_before,trail_before,status,processed_entries,implied_assignments,decisions_after,propagations_after,trail_after,kernel_ns,observed_ns_before_write\n");
++    fprintf(bcp_log, "call_id,phase,pending_entries,decision_level,decisions_before,propagations_before,trail_before,status,processed_entries,implied_assignments,decisions_after,propagations_after,trail_after,kernel_ns,observed_ns_before_write,start_ns,conflicts_before,restarts_before\n");
++    std::string phase_path = std::string(path) + ".phases.csv";
++    bcp_phase_log = fopen(phase_path.c_str(), "w");
++    if (!bcp_phase_log) { perror("BCP phase log"); exit(1); }
++    bcp_origin_ns = steadyNs();
++    fprintf(bcp_phase_log, "phase,start_ns\n%s,0\n", bcp_phase);
+ }
+ 
++void Solver::setBcpPhase(const char* phase)
++{
++    bcp_phase = phase;
++    if (bcp_phase_log)
++        fprintf(bcp_phase_log, "%s,%llu\n", phase, (unsigned long long)(steadyNs() - bcp_origin_ns));
++}
++
+ void Solver::closeBcpLog()
+ {
++    bool failed = false;
++    if (bcp_phase_log) {
++        fprintf(bcp_phase_log, "closed,%llu\n", (unsigned long long)(steadyNs() - bcp_origin_ns));
++        failed = ferror(bcp_phase_log);
++        if (fclose(bcp_phase_log) != 0) failed = true;
++        bcp_phase_log = NULL;
++    }
+     if (bcp_log) {
+-        bool failed = ferror(bcp_log);
++        if (ferror(bcp_log)) failed = true;
+         if (fclose(bcp_log) != 0) failed = true;
+         bcp_log = NULL;
+-        if (failed) { fprintf(stderr, "BCP log write failed\n"); exit(1); }
+     }
++    if (failed) { fprintf(stderr, "BCP log write failed\n"); exit(1); }
+ }
+ 
+ CRef Solver::propagate()
+@@ -534,18 +559,22 @@
+     const int trail_before = trail.size();
+     const uint64_t decisions_before = decisions;
+     const uint64_t props_before = propagations;
++    const uint64_t conflicts_before = conflicts;
++    const uint64_t restarts_before = starts;
+     const Clock::time_point kernel_begin = Clock::now();
+     const CRef result = propagateOriginal();
+     const Clock::time_point kernel_end = Clock::now();
+     const uint64_t kernel_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(kernel_end - kernel_begin).count();
+     const uint64_t observed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - begin).count();
+-    fprintf(bcp_log, "%llu,%s,%d,%d,%llu,%llu,%d,%s,%llu,%d,%llu,%llu,%d,%llu,%llu\n",
++    const uint64_t start_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(begin.time_since_epoch()).count() - bcp_origin_ns;
++    fprintf(bcp_log, "%llu,%s,%d,%d,%llu,%llu,%d,%s,%llu,%d,%llu,%llu,%d,%llu,%llu,%llu,%llu,%llu\n",
+         (unsigned long long)++bcp_call, bcp_phase, pending, level_before,
+         (unsigned long long)decisions_before, (unsigned long long)props_before,
+         trail_before, result == CRef_Undef ? "FIXED_POINT" : "CONFLICT",
+         (unsigned long long)(propagations - props_before), trail.size() - trail_before,
+         (unsigned long long)decisions, (unsigned long long)propagations, trail.size(),
+-        (unsigned long long)kernel_ns, (unsigned long long)observed_ns);
++        (unsigned long long)kernel_ns, (unsigned long long)observed_ns, (unsigned long long)start_ns,
++        (unsigned long long)conflicts_before, (unsigned long long)restarts_before);
+     return result;
+ }
+ 
+--- a/minisat/core/Solver.h
++++ b/minisat/core/Solver.h
+@@ -154,12 +154,14 @@
+     // Optional host-side BCP observations; no accelerator is involved.
+     void openBcpLog(const char* path);
+     void closeBcpLog();
+-    void setBcpPhase(const char* phase) { bcp_phase = phase; }
++    void setBcpPhase(const char* phase);
+ 
+ protected:
+     FILE* bcp_log = NULL;
+     const char* bcp_phase = "api";
+     uint64_t bcp_call = 0;
++    FILE* bcp_phase_log = NULL;   // phase transitions, same clock origin as bcp_log
++    uint64_t bcp_origin_ns = 0;   // steady_clock time at openBcpLog
+     CRef propagateOriginal();
+ 
+     // Helper structures:

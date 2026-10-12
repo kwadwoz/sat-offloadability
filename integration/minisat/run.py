@@ -2,6 +2,7 @@
 """Run CPU MiniSat with optional BCP logging and provenance; preprocessing enabled."""
 import argparse, csv, gzip, hashlib, json, pathlib, subprocess, time, uuid
 from collections import deque
+import bcplog
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
@@ -24,7 +25,7 @@ def main():
     solver, cnf = args.solver.resolve(), args.cnf.resolve()
     cmd = [str(solver), '-pre', '-rnd-seed=91648253', '-verb=1']
     if args.logging:
-        cmd.append('-bcp-log=' + str((args.out / 'calls.csv').resolve()))
+        cmd.append('-bcp-log=' + str((args.out / 'calls.bin').resolve()))
     # Preserve the existing harness's handling of SATLIB '%' footers.
     prepared = (args.out / 'input.cnf').resolve()
     opener = gzip.open if cnf.suffix == '.gz' else open
@@ -44,11 +45,13 @@ def main():
     elapsed = time.perf_counter_ns() - begin
     metadata = {'run_id':str(uuid.uuid4()), 'formula_sha256':sha(cnf), 'prepared_formula_sha256':sha(prepared), 'solver_sha256':sha(solver),
                 'source_version':'2.2.1', 'source_sha256':'432985833596653fcd698ab439588471cc0f2437617d0df2bb191a0252ba423d',
-                'patch_sha256':sha(ROOT/'integration/minisat/bcp-instrumentation.patch'),
+                'patch_sha256':{p:sha(ROOT/'integration/minisat'/p) for p in ('bcp-instrumentation.patch','bcp-timestamps.patch','bcp-buffered-log.patch')},
                 'configuration_sha256':hashlib.sha256(json.dumps({'preprocessing':True,'seed':91648253,'logging':args.logging,'history_window':args.history_window,'min_decisions':args.min_decisions,'timeout':args.timeout},sort_keys=True).encode()).hexdigest(),
                 'command':cmd, 'preprocessing':True, 'logging':args.logging, 'exit_code':rc,
                 'status':status, 'process_wall_ns':elapsed, 'timeout_seconds':args.timeout}
     (args.out / 'metadata.json').write_text(json.dumps(metadata, indent=2)+'\n')
+    if args.logging and status in ('SAT','UNSAT'):
+        bcplog.write_csv(args.out/'calls.bin', args.out/'calls.csv')
     # Offline history uses only earlier completed calls. It is not an online policy.
     if args.logging and status in ('SAT','UNSAT'):
         history = deque(maxlen=args.history_window)
