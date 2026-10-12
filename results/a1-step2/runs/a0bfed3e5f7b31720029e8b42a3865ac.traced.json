@@ -1,0 +1,29 @@
+{
+  "run_id": "940f4e71-9398-491c-b536-31345a721bdd",
+  "formula_sha256": "3655ab82d578ee40b7ec0656de82410eade68d1fb34103ad4978135c0e2ee9b8",
+  "prepared_formula_sha256": "3655ab82d578ee40b7ec0656de82410eade68d1fb34103ad4978135c0e2ee9b8",
+  "solver_sha256": "17413a1d904271b943f212ead3c7f4d8fe12bba923906bea62d4791e0bd72ed5",
+  "source_version": "2.2.1",
+  "source_sha256": "432985833596653fcd698ab439588471cc0f2437617d0df2bb191a0252ba423d",
+  "patch_sha256": {
+    "bcp-instrumentation.patch": "e2102ae2eb05a6dcc331d49a2ccc6b8e62e5709d12bf929626921f55287d7da0",
+    "bcp-timestamps.patch": "fcb7a066ce0669787452043300b3ca08c649b16aa62a6a5db86b90b4ded3f19a",
+    "bcp-buffered-log.patch": "7e56918a8f4d3b2eea56d6fbd9289ec6d6f4a7be5245d1a22d3c7a4e8fb659a7"
+  },
+  "configuration_sha256": "f133198c9eddeca12869afe5ab7b506960b0f55748b95bdf95acd34afa1488d1",
+  "command": [
+    "/private/tmp/sat-bcp-p1c/build-instrumented/minisat",
+    "-pre",
+    "-rnd-seed=91648253",
+    "-verb=1",
+    "-bcp-log=/Users/zenasboamah/sat-bcp-data/a1-step2/work/a0bfed3e5f7b31720029e8b42a3865ac/traced/calls.bin",
+    "/Users/zenasboamah/sat-bcp-data/a1-step2/work/a0bfed3e5f7b31720029e8b42a3865ac/traced/input.cnf",
+    "/Users/zenasboamah/sat-bcp-data/a1-step2/work/a0bfed3e5f7b31720029e8b42a3865ac/traced/model.txt"
+  ],
+  "preprocessing": true,
+  "logging": true,
+  "exit_code": 10,
+  "status": "SAT",
+  "process_wall_ns": 293301083,
+  "timeout_seconds": 60.0
+}

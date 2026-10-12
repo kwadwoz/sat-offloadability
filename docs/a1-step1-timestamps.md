@@ -1,6 +1,6 @@
 # A1 step 1: call timestamps, conflict/restart counters, phase log
 
-Status: implemented and validated; awaiting user acceptance. Nothing committed.
+Status: accepted by the user; committed and pushed (d889204).
 
 ## Purpose
 
@@ -73,8 +73,7 @@ Disabled mode remains indistinguishable from the original build.
 
 # Step 1b: buffered binary log (user chose option B)
 
-Status: implemented and validated; awaiting user acceptance. Nothing committed.
-Step 1 above was accepted by the user.
+Status: accepted by the user; committed and pushed with step 1 (d889204).
 
 ## Purpose
 

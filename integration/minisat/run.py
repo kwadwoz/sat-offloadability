@@ -15,6 +15,7 @@ def main():
     ap.add_argument('--cnf', required=True, type=pathlib.Path)
     ap.add_argument('--out', required=True, type=pathlib.Path)
     ap.add_argument('--logging', action='store_true')
+    ap.add_argument('--no-decode', action='store_true', help='Keep only the binary log (no calls.csv/features.csv)')
     ap.add_argument('--timeout', type=float, default=60)
     ap.add_argument('--history-window', type=int, default=64)
     ap.add_argument('--min-decisions', type=int, default=1)
@@ -50,10 +51,10 @@ def main():
                 'command':cmd, 'preprocessing':True, 'logging':args.logging, 'exit_code':rc,
                 'status':status, 'process_wall_ns':elapsed, 'timeout_seconds':args.timeout}
     (args.out / 'metadata.json').write_text(json.dumps(metadata, indent=2)+'\n')
-    if args.logging and status in ('SAT','UNSAT'):
+    if args.logging and status in ('SAT','UNSAT') and not args.no_decode:
         bcplog.write_csv(args.out/'calls.bin', args.out/'calls.csv')
     # Offline history uses only earlier completed calls. It is not an online policy.
-    if args.logging and status in ('SAT','UNSAT'):
+    if args.logging and status in ('SAT','UNSAT') and not args.no_decode:
         history = deque(maxlen=args.history_window)
         with (args.out/'calls.csv').open() as source, (args.out/'features.csv').open('w') as dest:
             reader = csv.DictReader(source)
