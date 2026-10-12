@@ -1,0 +1,25 @@
+{
+  "run_id": "1a70d89a-21d7-4868-97f5-4e515715e3a1",
+  "formula_sha256": "020d063494718c0e641ca61db2b24cbbf0730afd7c04bad7e263b12dc85bc734",
+  "prepared_formula_sha256": "020d063494718c0e641ca61db2b24cbbf0730afd7c04bad7e263b12dc85bc734",
+  "solver_sha256": "77d76b6513a321d16dbe45bde7e64687d7b20925b6885eed8bd019d059632ca8",
+  "source_version": "2.2.1",
+  "source_sha256": "432985833596653fcd698ab439588471cc0f2437617d0df2bb191a0252ba423d",
+  "patch_sha256": "e2102ae2eb05a6dcc331d49a2ccc6b8e62e5709d12bf929626921f55287d7da0",
+  "configuration_sha256": "87f85a71054a97f10f5aa29e12bec2f4b500d8b0b2ff8b3d0391f2c22f46afc5",
+  "command": [
+    "/private/tmp/sat-bcp-p1/build-instrumented/minisat",
+    "-pre",
+    "-rnd-seed=91648253",
+    "-verb=1",
+    "-bcp-log=/Users/zenasboamah/sat-offloadability/results/p1/trace-example/calls.csv",
+    "/Users/zenasboamah/sat-offloadability/results/p1/trace-example/input.cnf",
+    "/Users/zenasboamah/sat-offloadability/results/p1/trace-example/model.txt"
+  ],
+  "preprocessing": true,
+  "logging": true,
+  "exit_code": 10,
+  "status": "SAT",
+  "process_wall_ns": 4737833,
+  "timeout_seconds": 60
+}

@@ -1,0 +1,147 @@
+--- a/minisat/core/Solver.h
++++ b/minisat/core/Solver.h
+@@ -151,7 +151,16 @@
+     uint64_t solves, starts, decisions, rnd_decisions, propagations, conflicts;
+     uint64_t dec_vars, num_clauses, num_learnts, clauses_literals, learnts_literals, max_literals, tot_literals;
+ 
++    // Optional host-side BCP observations; no accelerator is involved.
++    void openBcpLog(const char* path);
++    void closeBcpLog();
++    void setBcpPhase(const char* phase) { bcp_phase = phase; }
++
+ protected:
++    FILE* bcp_log = NULL;
++    const char* bcp_phase = "api";
++    uint64_t bcp_call = 0;
++    CRef propagateOriginal();
+ 
+     // Helper structures:
+     //
+--- a/minisat/core/Solver.cc
++++ b/minisat/core/Solver.cc
+@@ -19,6 +19,9 @@
+ **************************************************************************************************/
+ 
+ #include <math.h>
++#include <chrono>
++#include <cstdio>
++#include <cstdlib>
+ 
+ #include "minisat/mtl/Alg.h"
+ #include "minisat/mtl/Sort.h"
+@@ -106,6 +109,7 @@
+ 
+ Solver::~Solver()
+ {
++    closeBcpLog();
+ }
+ 
+ 
+@@ -503,7 +507,49 @@
+ |    Post-conditions:
+ |      * the propagation queue is empty, even if there was a conflict.
+ |________________________________________________________________________________________________@*/
++void Solver::openBcpLog(const char* path)
++{
++    bcp_log = fopen(path, "w");
++    if (!bcp_log) { perror("BCP log"); exit(1); }
++    fprintf(bcp_log, "call_id,phase,pending_entries,decision_level,decisions_before,propagations_before,trail_before,status,processed_entries,implied_assignments,decisions_after,propagations_after,trail_after,kernel_ns,observed_ns_before_write\n");
++}
++
++void Solver::closeBcpLog()
++{
++    if (bcp_log) {
++        bool failed = ferror(bcp_log);
++        if (fclose(bcp_log) != 0) failed = true;
++        bcp_log = NULL;
++        if (failed) { fprintf(stderr, "BCP log write failed\n"); exit(1); }
++    }
++}
++
+ CRef Solver::propagate()
++{
++    if (!bcp_log) return propagateOriginal();
++    typedef std::chrono::steady_clock Clock;
++    const Clock::time_point begin = Clock::now();
++    const int pending = trail.size() - qhead;
++    const int level_before = decisionLevel();
++    const int trail_before = trail.size();
++    const uint64_t decisions_before = decisions;
++    const uint64_t props_before = propagations;
++    const Clock::time_point kernel_begin = Clock::now();
++    const CRef result = propagateOriginal();
++    const Clock::time_point kernel_end = Clock::now();
++    const uint64_t kernel_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(kernel_end - kernel_begin).count();
++    const uint64_t observed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - begin).count();
++    fprintf(bcp_log, "%llu,%s,%d,%d,%llu,%llu,%d,%s,%llu,%d,%llu,%llu,%d,%llu,%llu\n",
++        (unsigned long long)++bcp_call, bcp_phase, pending, level_before,
++        (unsigned long long)decisions_before, (unsigned long long)props_before,
++        trail_before, result == CRef_Undef ? "FIXED_POINT" : "CONFLICT",
++        (unsigned long long)(propagations - props_before), trail.size() - trail_before,
++        (unsigned long long)decisions, (unsigned long long)propagations, trail.size(),
++        (unsigned long long)kernel_ns, (unsigned long long)observed_ns);
++    return result;
++}
++
++CRef Solver::propagateOriginal()
+ {
+     CRef    confl     = CRef_Undef;
+     int     num_props = 0;
+--- a/minisat/simp/Main.cc
++++ b/minisat/simp/Main.cc
+@@ -67,10 +67,14 @@
+         IntOption    mem_lim("MAIN", "mem-lim","Limit on memory usage in megabytes.\n", 0, IntRange(0, INT32_MAX));
+         BoolOption   strictp("MAIN", "strict", "Validate DIMACS header during parsing.", false);
+ 
++        StringOption bcp_log("MAIN", "bcp-log", "Optional per-call BCP CSV path.");
++
+         parseOptions(argc, argv, true);
+         
+         SimpSolver  S;
+         double      initial_time = cpuTime();
++        if (bcp_log) S.openBcpLog((const char*)bcp_log);
++        S.setBcpPhase("preprocessing");
+ 
+         if (!pre) S.eliminate(true);
+ 
+@@ -96,6 +100,7 @@
+             printf("============================[ Problem Statistics ]=============================\n");
+             printf("|                                                                             |\n"); }
+         
++        S.setBcpPhase("parsing");
+         parse_DIMACS(in, S, (bool)strictp);
+         gzclose(in);
+         FILE* res = (argc >= 3) ? fopen(argv[2], "wb") : NULL;
+@@ -112,6 +117,7 @@
+         // voluntarily:
+         sigTerm(SIGINT_interrupt);
+ 
++        S.setBcpPhase("preprocessing");
+         S.eliminate(true);
+         double simplified_time = cpuTime();
+         if (S.verbosity > 0){
+@@ -126,6 +132,7 @@
+                 S.printStats();
+                 printf("\n"); }
+             printf("UNSATISFIABLE\n");
++            S.closeBcpLog();
+             exit(20);
+         }
+ 
+@@ -133,6 +140,7 @@
+ 
+         if (solve){
+             vec<Lit> dummy;
++            S.setBcpPhase("search");
+             ret = S.solveLimited(dummy);
+         }else if (S.verbosity > 0)
+             printf("===============================================================================\n");
+@@ -158,6 +166,8 @@
+             fclose(res);
+         }
+ 
++        S.closeBcpLog();
++
+ #ifdef NDEBUG
+         exit(ret == l_True ? 10 : ret == l_False ? 20 : 0);     // (faster than "return", which will invoke the destructor for 'Solver')
+ #else

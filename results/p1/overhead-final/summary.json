@@ -1,0 +1,24 @@
+{
+  "seed": 20261011,
+  "repetitions": 5,
+  "warmups_per_mode": 1,
+  "preprocessing": true,
+  "timing": "Host monotonic process wall time including launch, parsing, preprocessing, solve and CSV writes/close; temporary file storage.",
+  "binary_sha256": {
+    "original": "6e18ae64a12bc5316102e03756f97bb74ae3cead2e255e1fffa868f3ac1f93ef",
+    "disabled": "77d76b6513a321d16dbe45bde7e64687d7b20925b6885eed8bd019d059632ca8",
+    "enabled": "77d76b6513a321d16dbe45bde7e64687d7b20925b6885eed8bd019d059632ca8"
+  },
+  "instances": [
+    {
+      "instance": "benchmarks/uf250-1065/ai/hoos/Shortcuts/UF250.1065.100/uf250-01.cnf",
+      "median_process_wall_ns": {
+        "original": 173460875,
+        "disabled": 173111125,
+        "enabled": 230639209
+      },
+      "enabled_over_original": 1.3296324545808962,
+      "disabled_over_original": 0.9979836951704527
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "all_passed": true,
+  "calls_checked": 85540,
+  "history_window": 64,
+  "minimum_decisions": 1,
+  "formula_sha256": "3594d8a83c34352dc6aa0993d150ed9b7bbea7ec7ac53e3780215c148725cce2",
+  "precall_history_only": true
+}

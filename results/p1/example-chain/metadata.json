@@ -1,0 +1,23 @@
+{
+  "run_id": "801df723-3e5a-4654-b393-fcaf187c14f1",
+  "formula_sha256": "020d063494718c0e641ca61db2b24cbbf0730afd7c04bad7e263b12dc85bc734",
+  "solver_sha256": "80c6b7ffe45490d85fafe58863efa7f8a931ee90a7a9202a1817238ffb5bbb5e",
+  "source_version": "2.2.1",
+  "source_sha256": "432985833596653fcd698ab439588471cc0f2437617d0df2bb191a0252ba423d",
+  "patch_sha256": "2333ccb1bd1efb97a5ad9a522341d8e274ff3bca80fe3fb73bfbd8cfb3743aa0",
+  "command": [
+    "/private/tmp/sat-bcp-p1/build-instrumented/minisat",
+    "-pre",
+    "-rnd-seed=91648253",
+    "-verb=1",
+    "-bcp-log=/Users/zenasboamah/sat-offloadability/results/p1/example-chain/calls.csv",
+    "/private/tmp/sat-bcp-p0/checks/chain.cnf",
+    "/Users/zenasboamah/sat-offloadability/results/p1/example-chain/model.txt"
+  ],
+  "preprocessing": true,
+  "logging": true,
+  "exit_code": 10,
+  "status": "SAT",
+  "process_wall_ns": 4741250,
+  "timeout_seconds": 60
+}

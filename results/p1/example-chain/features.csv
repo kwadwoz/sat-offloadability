@@ -1,0 +1,7 @@
+call_id,phase,pending_entries,decision_level,decisions_before,propagations_before,trail_before,status,processed_entries,implied_assignments,decisions_after,propagations_after,trail_after,kernel_ns,observed_ns_before_write,recent_pr,recent_w,history_calls,history_valid
+1,parsing,1,0,0,0,1,FIXED_POINT,1,0,0,1,1,250,250,,,0,False
+2,parsing,1,0,0,1,2,FIXED_POINT,1,0,0,2,2,0,42,,1.0,1,True
+3,parsing,1,0,0,2,3,FIXED_POINT,1,0,0,3,3,0,42,,1.0,2,True
+4,preprocessing,0,0,0,3,3,FIXED_POINT,0,0,0,3,3,42,42,,1.0,3,True
+5,search,0,0,0,3,3,FIXED_POINT,0,0,0,3,3,0,41,,0.75,4,True
+6,search,0,0,0,3,3,FIXED_POINT,0,0,0,3,3,0,41,,0.6,5,True
